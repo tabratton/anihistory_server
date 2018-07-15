@@ -1,7 +1,7 @@
 // User Structs
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserResponse {
-    pub data: Option<UserData>,
+    pub data: UserData,
     pub errors: Option<Vec<Error>>,
 }
 
@@ -21,7 +21,7 @@ pub struct Location {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserData {
     #[serde(rename = "User")]
-    pub user: User,
+    pub user: Option<User>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -62,7 +62,7 @@ pub struct MediaList {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Entry {
     #[serde(rename = "scoreRaw")]
-    pub score_raw: Option<i32>,
+    pub score_raw: Option<i16>,
     #[serde(rename = "startedAt")]
     pub started_at: Date,
     #[serde(rename = "completedAt")]
@@ -85,7 +85,7 @@ pub struct Media {
     #[serde(rename = "coverImage")]
     pub cover_image: Image,
     #[serde(rename = "averageScore")]
-    pub average_score: Option<i32>,
+    pub average_score: Option<i16>,
     #[serde(rename = "siteUrl")]
     pub site_url: String,
 }
