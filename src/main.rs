@@ -25,7 +25,7 @@ use diesel::prelude::*;
 use dotenv::dotenv;
 use rocket_contrib::Json;
 use rusoto_core::Region;
-use rusoto_s3::{HeadObjectRequest, PutObjectRequest, S3, S3Client};
+use rusoto_s3::{PutObjectRequest, S3, S3Client};
 use schema::anime;
 use schema::lists;
 use schema::users;
@@ -143,7 +143,8 @@ fn get_id(username: String) -> Option<query_structs::User> {
             // Download their avatar and upload to S3.
             let mut content = Vec::new();
             let ext = download_image(&mut content, &user.avatar.large);
-            upload_to_s3("user".to_owned(), user.id, ext.clone(), content, true);
+            let new_link = user.avatar.large.clone();
+            upload_to_s3(ImageTypes::User, user.id, ext.clone(), content, new_link);
 
             // Connect to DB and upsert user entry.
             let connection = establish_connection();
@@ -151,10 +152,11 @@ fn get_id(username: String) -> Option<query_structs::User> {
             let new_user = User {
                 user_id: user.id.clone(),
                 name: user.name.clone(),
-                avatar: format!(
+                avatar_s3: format!(
                     "https://s3.amazonaws.com/anihistory-images/user_{}.{}",
                     user.id, ext
                 ),
+                avatar_anilist: user.avatar.large.clone(),
             };
 
             diesel::insert_into(users::table)
@@ -191,8 +193,15 @@ fn update_entries(id: i32) {
                 let ext = download_image(&mut content, &entry.media.cover_image.large);
                 let closure_id = entry.media.id.clone();
                 let closure_ext = ext.clone();
+                let new_link = entry.media.cover_image.large.clone();
                 thread::spawn(move || {
-                    upload_to_s3("anime".to_owned(), closure_id, closure_ext, content, false)
+                    upload_to_s3(
+                        ImageTypes::Anime,
+                        closure_id,
+                        closure_ext,
+                        content,
+                        new_link,
+                    )
                 });
 
                 // Connect to DB and upsert anime and list entries.
@@ -201,10 +210,11 @@ fn update_entries(id: i32) {
                 let new_anime = Anime {
                     anime_id: entry.media.id,
                     description: entry.media.description,
-                    cover: format!(
+                    cover_s3: format!(
                         "https://s3.amazonaws.com/anihistory-images/anime_{}.{}",
                         entry.media.id, ext
                     ),
+                    cover_anilist: entry.media.cover_image.large.clone(),
                     average: entry.media.average_score,
                     native: entry.media.title.native,
                     romaji: entry.media.title.romaji,
@@ -263,42 +273,60 @@ pub fn establish_connection() -> PgConnection {
     PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
 }
 
-fn upload_to_s3(prefix: String, id: i32, ext: String, content: Vec<u8>, replace: bool) {
+fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_anilist: String) {
+    let image_prefix: String;
+    let connection = establish_connection();
+    match prefix {
+        ImageTypes::Anime => {
+            image_prefix = "anime".to_owned();
+            let result_anime = anime::table
+                .filter(anime::anime_id.eq(id))
+                .first::<Anime>(&connection);
+            match result_anime {
+                Ok(anime) => {
+                    if anime.cover_anilist == new_anilist {
+                        return;
+                    }
+                }
+                Err(_) => {}
+            };
+        }
+        ImageTypes::User => {
+            image_prefix = "user".to_owned();
+            let result_user = users::table
+                .filter(users::user_id.eq(id))
+                .first::<User>(&connection);
+            match result_user {
+                Ok(user) => {
+                    if user.avatar_anilist == new_anilist {
+                        return;
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+    };
+
     let client = S3Client::simple(Region::UsEast1);
     let bucket_name = "anihistory-images";
     let mime = naive_mime(&ext);
-    let key = format!("{}_{}.{}", prefix, id, ext);
+    let key = format!("{}_{}.{}", image_prefix, id, ext);
 
-    let head_request = HeadObjectRequest {
+    let put_request = PutObjectRequest {
         bucket: bucket_name.to_owned(),
         key: key.clone(),
-        ..HeadObjectRequest::default()
+        body: Some(content),
+        content_type: Some(mime),
+        acl: Some("public-read".to_owned()),
+        ..PutObjectRequest::default()
     };
 
-    let exists: bool;
-
-    match client.head_object(&head_request).sync() {
-        Ok(_) => exists = true,
-        Err(_) => exists = false,
-    }
-
-    if exists && replace || !exists {
-        let put_request = PutObjectRequest {
-            bucket: bucket_name.to_owned(),
-            key: key.clone(),
-            body: Some(content),
-            content_type: Some(mime),
-            acl: Some("public-read".to_owned()),
-            ..PutObjectRequest::default()
-        };
-
-        match client.put_object(&put_request).sync() {
-            Ok(_) => {
-                println!("{}_{}.{}", prefix, id, ext);
-            }
-            Err(error) => {
-                println!("Error: {}", error);
-            }
+    match client.put_object(&put_request).sync() {
+        Ok(_) => {
+            println!("{}_{}.{}", image_prefix, id, ext);
+        }
+        Err(error) => {
+            println!("Error: {}", error);
         }
     }
 }
@@ -318,6 +346,11 @@ fn download_image(content: &mut Vec<u8>, url: &String) -> String {
     let link_parts: Vec<&str> = url.split('/').collect();
     let splitted: Vec<&str> = link_parts[link_parts.len() - 1].split(".").collect();
     splitted[1].to_owned()
+}
+
+enum ImageTypes {
+    Anime,
+    User,
 }
 
 fn main() {

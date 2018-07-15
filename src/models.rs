@@ -10,7 +10,8 @@ use super::schema::users;
 pub struct User {
     pub user_id: i32,
     pub name: String,
-    pub avatar: String,
+    pub avatar_s3: String,
+    pub avatar_anilist: String,
 }
 
 #[derive(Queryable, Insertable, AsChangeset)]
@@ -18,7 +19,8 @@ pub struct User {
 pub struct Anime {
     pub anime_id: i32,
     pub description: String,
-    pub cover: String,
+    pub cover_s3: String,
+    pub cover_anilist: String,
     pub average: Option<i16>,
     pub native: Option<String>,
     pub romaji: Option<String>,
