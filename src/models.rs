@@ -1,9 +1,7 @@
-extern crate chrono;
-
-use self::chrono::NaiveDate;
-use super::schema::anime;
-use super::schema::lists;
-use super::schema::users;
+use chrono::NaiveDate;
+use schema::anime;
+use schema::lists;
+use schema::users;
 
 #[derive(Queryable, Insertable, AsChangeset)]
 #[table_name = "users"]
