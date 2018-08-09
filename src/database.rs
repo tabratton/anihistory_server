@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use dotenv::dotenv;
 use reqwest::get;
 use rusoto_core::Region;
-use rusoto_s3::{PutObjectRequest, S3, S3Client};
+use rusoto_s3::{PutObjectRequest, S3Client, S3};
 use schema::anime;
 use schema::lists;
 use schema::users;

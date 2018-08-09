@@ -1,9 +1,3 @@
-#![feature(plugin)]
-#![plugin(rocket_codegen)]
-
-extern crate rocket;
-#[macro_use]
-extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
 extern crate reqwest;
@@ -13,11 +7,11 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate diesel;
+extern crate actix_web;
 extern crate chrono;
 extern crate dotenv;
 
-use rocket_contrib::Json;
-use serde_json::Value;
+use actix_web::{http, server, App, Either, HttpResponse, Path, Responder};
 use std::thread;
 
 mod anilist_query;
@@ -28,12 +22,11 @@ mod schema;
 
 // User passes in username, first query to find userID, then query with
 // found ID.
-#[get("/user/<username>")]
-fn user(username: String) -> Json<Value> {
-    let user = anilist_query::get_id(username);
+fn user(info: Path<(String,)>) -> impl Responder {
+    let user = anilist_query::get_id(info.0.clone());
     match user {
-        Some(u) => Json(json!(u)),
-        None => Json(json!({"success": false})),
+        Some(u) => Either::A(HttpResponse::Ok().json(u)),
+        None => Either::B(HttpResponse::BadRequest().body("User not found")),
     }
 
     // TODO: Query database for this user's list.
@@ -44,18 +37,29 @@ fn user(username: String) -> Json<Value> {
 }
 
 // Update all entries for a user
-#[put("/user/<username>")]
-fn update(username: String) -> &'static str {
-    let user = anilist_query::get_id(username);
+fn update(info: Path<(String,)>) -> impl Responder {
+    let user = anilist_query::get_id(info.0.clone());
     match user {
         Some(u) => {
             thread::spawn(move || database::update_entries(u.id));
-            "Added to the queue"
+            Either::A(HttpResponse::Ok().body("Added to the queue"))
         }
-        None => "User not found",
+        None => Either::B(HttpResponse::BadRequest().body("User not found")),
     }
 }
 
 fn main() {
-    rocket::ignite().mount("/", routes![update, user]).launch();
+    println!("Starting server...");
+    server::new(|| {
+        App::new()
+            .resource("/user/{username}", |r| {
+                r.method(http::Method::GET).with(user)
+            })
+		    .resource("/updateUser/{username}", |r| {
+                r.method(http::Method::PUT).with(update)
+            })
+    })
+	.bind("127.0.0.1:5000")
+    .unwrap()
+    .run();
 }
