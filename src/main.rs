@@ -23,28 +23,38 @@ mod schema;
 // User passes in username, first query to find userID, then query with
 // found ID.
 fn user(info: Path<(String,)>) -> impl Responder {
-    let user = anilist_query::get_id(info.0.clone());
-    match user {
-        Some(u) => Either::A(HttpResponse::Ok().json(u)),
-        None => Either::B(HttpResponse::BadRequest().body("User not found")),
+    // temp response (want to fail on database query because user info should be loaded before
+    // getting list
+    match database::get_user(info.0.clone()) {
+        //	Ok(user) => Either::A(HttpResponse::Ok().json(database::get_list(user))),
+        Ok(user) => Either::A(HttpResponse::Ok().json(user)),
+        Err(_) => Either::B(HttpResponse::BadRequest().body("User not found")),
     }
 
     // TODO: Query database for this user's list.
-    // SELECT u.user_id, u.name, u.avatar_s3, a.anime_id, l.user_title, a.english, a.romaji, a.native,
-    // a.description, a.cover_s3, a.average, l.start_day, l.end_day, l.score
-    // FROM anime AS a INNER JOIN (lists AS l INNER JOIN users AS u ON l.user_id=u.user_id)
-    // ON a.anime_id=l.anime_id WHERE u.user_id=<userid>;
+    //SELECT lists.user_title, anime.english, anime.romaji, anime.native, anime.description, anime.cover_s3, anime.average, lists.start_day, lists.end_day, lists.score
+    //FROM anime
+    //INNER JOIN lists
+    //  ON lists.anime_id=anime.anime_id
+    //INNER JOIN users
+    //  ON lists.user_id=users.user_id
+    //WHERE users.user_id=<user_id>>;
 }
 
 // Update all entries for a user
 fn update(info: Path<(String,)>) -> impl Responder {
-    let user = anilist_query::get_id(info.0.clone());
-    match user {
-        Some(u) => {
-            thread::spawn(move || database::update_entries(u.id));
+    match database::get_user(info.0.clone()) {
+        Ok(user) => {
+            thread::spawn(move || database::update_entries(user.user_id));
             Either::A(HttpResponse::Ok().body("Added to the queue"))
         }
-        None => Either::B(HttpResponse::BadRequest().body("User not found")),
+        Err(_) => match anilist_query::get_id(info.0.clone()) {
+            Some(user) => {
+                thread::spawn(move || database::update_entries(user.id));
+                Either::A(HttpResponse::Ok().body("Added to the queue"))
+            }
+            None => Either::B(HttpResponse::BadRequest().body("User not found")),
+        },
     }
 }
 
@@ -54,12 +64,10 @@ fn main() {
         App::new()
             .resource("/user/{username}", |r| {
                 r.method(http::Method::GET).with(user)
-            })
-		    .resource("/updateUser/{username}", |r| {
+            }).resource("/updateUser/{username}", |r| {
                 r.method(http::Method::PUT).with(update)
             })
-    })
-	.bind("127.0.0.1:5000")
+    }).bind("127.0.0.1:5000")
     .unwrap()
     .run();
 }

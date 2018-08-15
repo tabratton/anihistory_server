@@ -16,6 +16,13 @@ use anilist_query;
 use models;
 use query_structs;
 
+pub fn get_user(username: String) -> Result<models::User, diesel::result::Error> {
+    let connection = establish_connection();
+    users::table
+        .filter(users::name.eq(username))
+        .first(&connection)
+}
+
 pub fn update_user_profile(user: query_structs::User) {
     // Download their avatar and upload to S3.
     let mut content = Vec::new();

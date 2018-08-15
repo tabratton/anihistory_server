@@ -3,7 +3,7 @@ use schema::anime;
 use schema::lists;
 use schema::users;
 
-#[derive(Queryable, Insertable, AsChangeset)]
+#[derive(Queryable, Insertable, AsChangeset, Serialize, Deserialize)]
 #[table_name = "users"]
 pub struct User {
     pub user_id: i32,
