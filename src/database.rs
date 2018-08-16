@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use dotenv::dotenv;
 use reqwest::get;
 use rusoto_core::Region;
-use rusoto_s3::{PutObjectRequest, S3Client, S3, StreamingBody};
+use rusoto_s3::{PutObjectRequest, S3Client, S3};
 use schema::anime;
 use schema::lists;
 use schema::users;
@@ -21,6 +21,42 @@ pub fn get_user(username: String) -> Result<models::User, diesel::result::Error>
     users::table
         .filter(users::name.eq(username))
         .first(&connection)
+}
+
+pub fn get_list(id: i32) -> Option<models::ResponseList> {
+    let connection = establish_connection();
+    let database_list = lists::table
+        .filter(users::user_id.eq(id))
+        .inner_join(users::table)
+        .inner_join(anime::table)
+        .load::<(models::List, models::User, models::Anime)>(&connection);
+
+    match database_list {
+        Ok(v) => {
+            let mut items: Vec<models::ResponseItem> = Vec::with_capacity(v.len());
+            for t in v.clone() {
+                let item = models::ResponseItem {
+                    user_title: t.0.user_title,
+                    start_day: t.0.start_day,
+                    end_day: t.0.end_day,
+                    score: t.0.score,
+                    average: t.2.average,
+                    native: t.2.native,
+                    romaji: t.2.romaji,
+                    english: t.2.english,
+                    description: t.2.description,
+                    cover_s3: t.2.cover_s3,
+                };
+
+                items.push(item);
+            }
+            Some(models::ResponseList {
+                user: v[0].1.clone(),
+                items,
+            })
+        }
+        Err(_) => None,
+    }
 }
 
 pub fn update_user_profile(user: query_structs::User) {

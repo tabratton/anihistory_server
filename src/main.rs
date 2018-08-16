@@ -23,22 +23,13 @@ mod schema;
 // User passes in username, first query to find userID, then query with
 // found ID.
 fn user(info: Path<(String,)>) -> impl Responder {
-    // temp response (want to fail on database query because user info should be loaded before
-    // getting list
     match database::get_user(info.0.clone()) {
-        //	Ok(user) => Either::A(HttpResponse::Ok().json(database::get_list(user))),
-        Ok(user) => Either::A(HttpResponse::Ok().json(user)),
+        Ok(user) => match database::get_list(user.user_id) {
+            Some(list) => Either::A(HttpResponse::Ok().json(list)),
+            None => Either::B(HttpResponse::BadRequest().body("No list data")),
+        },
         Err(_) => Either::B(HttpResponse::BadRequest().body("User not found")),
     }
-
-    // TODO: Query database for this user's list.
-    //SELECT lists.user_title, anime.english, anime.romaji, anime.native, anime.description, anime.cover_s3, anime.average, lists.start_day, lists.end_day, lists.score
-    //FROM anime
-    //INNER JOIN lists
-    //  ON lists.anime_id=anime.anime_id
-    //INNER JOIN users
-    //  ON lists.user_id=users.user_id
-    //WHERE users.user_id=<user_id>>;
 }
 
 // Update all entries for a user
