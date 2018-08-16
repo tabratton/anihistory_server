@@ -23,10 +23,10 @@ pub fn get_user(username: String) -> Result<models::User, diesel::result::Error>
         .first(&connection)
 }
 
-pub fn get_list(id: i32) -> Option<models::ResponseList> {
+pub fn get_list(name: String) -> Option<models::ResponseList> {
     let connection = establish_connection();
     let database_list = lists::table
-        .filter(users::user_id.eq(id))
+        .filter(users::name.eq(name))
         .inner_join(users::table)
         .inner_join(anime::table)
         .load::<(models::List, models::User, models::Anime)>(&connection);

@@ -4,3 +4,5 @@ CREATE TABLE users (
     avatar_s3 TEXT NOT NULL,
     avatar_anilist TEXT NOT NULL
 )
+
+CREATE INDEX idx_name ON users(name);

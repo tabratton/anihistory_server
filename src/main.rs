@@ -23,12 +23,9 @@ mod schema;
 // User passes in username, first query to find userID, then query with
 // found ID.
 fn user(info: Path<(String,)>) -> impl Responder {
-    match database::get_user(info.0.clone()) {
-        Ok(user) => match database::get_list(user.user_id) {
-            Some(list) => Either::A(HttpResponse::Ok().json(list)),
-            None => Either::B(HttpResponse::BadRequest().body("No list data")),
-        },
-        Err(_) => Either::B(HttpResponse::BadRequest().body("User not found")),
+    match database::get_list(info.0.clone()) {
+        Some(list) => Either::A(HttpResponse::Ok().json(list)),
+        None => Either::B(HttpResponse::BadRequest().body("No list data")),
     }
 }
 
