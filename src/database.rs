@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use dotenv::dotenv;
 use reqwest::get;
 use rusoto_core::Region;
-use rusoto_s3::{PutObjectRequest, S3Client, S3};
+use rusoto_s3::{PutObjectRequest, S3Client, S3, StreamingBody};
 use schema::anime;
 use schema::lists;
 use schema::users;
@@ -158,7 +158,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
         }
     };
 
-    let client = S3Client::simple(Region::UsEast1);
+    let client = S3Client::new(Region::UsEast1);
     let bucket_name = "anihistory-images";
     let mime = naive_mime(&ext);
     let key = format!("{}_{}.{}", image_prefix, id, ext);
@@ -166,13 +166,13 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
     let put_request = PutObjectRequest {
         bucket: bucket_name.to_owned(),
         key: key.clone(),
-        body: Some(content),
+        body: Some(content.into()),
         content_type: Some(mime),
         acl: Some("public-read".to_owned()),
         ..PutObjectRequest::default()
     };
 
-    match client.put_object(&put_request).sync() {
+    match client.put_object(put_request).sync() {
         Ok(_) => {
             println!("{}_{}.{}", image_prefix, id, ext);
         }
