@@ -3,7 +3,7 @@ use schema::anime;
 use schema::lists;
 use schema::users;
 
-#[derive(Clone, Queryable, Insertable, AsChangeset, Serialize, Deserialize)]
+#[derive(Debug, Clone, Queryable, Insertable, AsChangeset, Serialize, Deserialize)]
 #[table_name = "users"]
 pub struct User {
     pub user_id: i32,
@@ -12,7 +12,7 @@ pub struct User {
     pub avatar_anilist: String,
 }
 
-#[derive(Clone, Queryable, Insertable, AsChangeset)]
+#[derive(Debug, Clone, Queryable, Insertable, AsChangeset)]
 #[table_name = "anime"]
 pub struct Anime {
     pub anime_id: i32,
@@ -25,7 +25,7 @@ pub struct Anime {
     pub english: Option<String>,
 }
 
-#[derive(Clone, Queryable, Insertable, AsChangeset)]
+#[derive(Debug, Clone, Queryable, Insertable, AsChangeset)]
 #[table_name = "lists"]
 pub struct List {
     pub user_id: i32,

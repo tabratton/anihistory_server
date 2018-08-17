@@ -16,15 +16,25 @@ use anilist_query;
 use models;
 use query_structs;
 
-pub fn get_user(username: String) -> Result<models::User, diesel::result::Error> {
+pub fn get_user(username: &str) -> Result<models::User, diesel::result::Error> {
     let connection = establish_connection();
-    users::table
+    let result = users::table
         .filter(users::name.eq(username))
-        .first(&connection)
+        .first(&connection);
+    match result {
+        Ok(_) => result,
+        Err(error) => {
+            error!(
+                "user_name={} was not found in internal database. Error: {}",
+                username, &error
+            );
+            Err(error)
+        }
+    }
 }
 
-pub fn get_list(name: String) -> Option<models::ResponseList> {
-    let connection = establish_connection();
+pub fn get_list(name: &str) -> Option<models::ResponseList> {
+  let connection = establish_connection();
     let database_list = lists::table
         .filter(users::name.eq(name))
         .inner_join(users::table)
@@ -55,7 +65,13 @@ pub fn get_list(name: String) -> Option<models::ResponseList> {
                 items,
             })
         }
-        Err(_) => None,
+        Err(error) => {
+            error!(
+                "error getting list for user_name={}. Error: {}",
+                name, error
+            );
+            None
+        }
     }
 }
 
@@ -79,13 +95,19 @@ pub fn update_user_profile(user: query_structs::User) {
         avatar_anilist: user.avatar.large.clone(),
     };
 
-    diesel::insert_into(users::table)
+    let result = diesel::insert_into(users::table)
         .values(&new_user)
         .on_conflict(users::user_id)
         .do_update()
         .set(&new_user)
-        .execute(&connection)
-        .expect("Error saving new user");
+        .execute(&connection);
+
+    match result {
+        Ok(_) => (),
+        Err(error) => {
+            error!("error saving user={:?}. Error: {}", new_user, error);
+        }
+    }
 }
 
 pub fn update_entries(id: i32) {
@@ -127,13 +149,17 @@ pub fn update_entries(id: i32) {
                     english: entry.media.title.english,
                 };
 
-                diesel::insert_into(anime::table)
+                let anime_result = diesel::insert_into(anime::table)
                     .values(&new_anime)
                     .on_conflict(anime::anime_id)
                     .do_update()
                     .set(&new_anime)
-                    .execute(&connection)
-                    .expect("Error saving new anime");
+                    .execute(&connection);
+
+                if anime_result.is_err() {
+                    error!("error saving anime={:?}. Error: {}", new_anime, anime_result.expect_err
+					  ("?"));
+                }
 
                 let start = construct_date(entry.started_at);
                 let end = construct_date(entry.completed_at);
@@ -147,17 +173,21 @@ pub fn update_entries(id: i32) {
                     score: entry.score_raw,
                 };
 
-                diesel::insert_into(lists::table)
+                let list_result = diesel::insert_into(lists::table)
                     .values(&new_list)
                     .on_conflict((lists::anime_id, lists::user_id))
                     .do_update()
                     .set(&new_list)
-                    .execute(&connection)
-                    .expect("Error saving new anime");
+                    .execute(&connection);
+
+                if list_result.is_err() {
+                    error!("error saving list_entry={:?}. Error: {}", new_list, list_result
+					  .expect_err("?"));
+                }
             }
         }
     }
-    println!("Database updated for: {}", id);
+    info!("Database updated for user_id={}", id);
 }
 
 fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_anilist: String) {
@@ -175,7 +205,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
                         return;
                     }
                 }
-                _ => (),
+                Err(_) => (),
             };
         }
         ImageTypes::User => {
@@ -189,7 +219,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
                         return;
                     }
                 }
-                _ => (),
+                Err(_) => (),
             };
         }
     };
@@ -210,10 +240,13 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
 
     match client.put_object(put_request).sync() {
         Ok(_) => {
-            println!("{}_{}.{}", image_prefix, id, ext);
+            info!("uploaded {}_{}.{} to S3", image_prefix, id, ext);
         }
         Err(error) => {
-            println!("Error: {}", error);
+            error!(
+                "error uploading {}_{}.{} to S3. Error: {}",
+                image_prefix, id, ext, error
+            );
         }
     }
 }
@@ -235,7 +268,14 @@ fn establish_connection() -> PgConnection {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
+    let result = PgConnection::establish(&database_url);
+    match result {
+        Ok(connection) => connection,
+        Err(error) => {
+            error!("error connecting to {}. Error: {}", database_url, error);
+            panic!();
+        }
+    }
 }
 
 fn download_image(content: &mut Vec<u8>, url: &String) -> String {

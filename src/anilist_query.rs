@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use database;
 use query_structs;
 
-pub fn get_id(username: String) -> Option<query_structs::User> {
+pub fn get_id(username: &str) -> Option<query_structs::User> {
     // Construct query to anilist GraphQL to find corresponding id for username
     let query = USER_QUERY.replace("{}", username.as_ref());
     let mut body = HashMap::new();
@@ -21,7 +21,13 @@ pub fn get_id(username: String) -> Option<query_structs::User> {
             database::update_user_profile(user.clone());
             Some(user)
         }
-        None => None,
+        None => {
+            error!(
+                "user_name={} was not found in anilist/external database",
+                username
+            );
+            None
+        }
     }
 }
 
