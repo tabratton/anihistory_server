@@ -1,3 +1,9 @@
+#![feature(plugin)]
+#![plugin(rocket_codegen)]
+
+extern crate rocket;
+#[macro_use]
+extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
 extern crate reqwest;
@@ -7,41 +13,46 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate diesel;
-extern crate actix_web;
 extern crate chrono;
 extern crate dotenv;
 extern crate fern;
 #[macro_use]
 extern crate log;
 
-use actix_web::{http, middleware, server, App, Either, HttpResponse, Responder, Path};
+use fern::colors::{Color, ColoredLevelConfig};
+use rocket::http::Status;
+use rocket::response::status::Accepted;
+use rocket::response::Failure;
+use rocket_contrib::Json;
 use std::thread;
 
+mod anilist_models;
 mod anilist_query;
 mod database;
 mod models;
-mod query_structs;
 mod schema;
 
-fn user(req: Path<(String,)>) -> impl Responder {
-  match database::get_list(&req.0) {
-        Some(list) => Either::A(HttpResponse::Ok().json(list)),
-        None => Either::B(HttpResponse::BadRequest().body("No list data")),
+#[get("/user/<username>")]
+fn user(username: String) -> Result<Json<models::ResponseList>, Status> {
+    match database::get_list(&username) {
+        Some(list) => Ok(Json(list)),
+        None => Err(Status::NotFound),
     }
 }
 
-fn update(req: Path<(String,)>) -> impl Responder {
-    match database::get_user(&req.0) {
+#[put("/user/<username>")]
+fn update(username: String) -> Result<Accepted<String>, Status> {
+    match database::get_user(&username) {
         Ok(user) => {
             thread::spawn(move || database::update_entries(user.user_id));
-            Either::A(HttpResponse::Ok().body("Added to the queue"))
+            Ok(Accepted(Some("Added to the queue".to_owned())))
         }
-        Err(_) => match anilist_query::get_id(&req.0) {
+        Err(_) => match anilist_query::get_id(&username) {
             Some(user) => {
                 thread::spawn(move || database::update_entries(user.id));
-                Either::A(HttpResponse::Ok().body("Added to the queue"))
+                Ok(Accepted(Some("Added to the queue".to_owned())))
             }
-            None => Either::B(HttpResponse::BadRequest().body("User not found")),
+            None => Err(Status::NotFound),
         },
     }
 }
@@ -51,24 +62,17 @@ fn main() {
         std::process::abort()
     }
 
-    server::new(|| {
-        App::new()
-            .middleware(middleware::Logger::default())
-            .route("/user/{username}", http::Method::GET, user)
-            .route("/user/{username}", http::Method::PUT, update)
-    }).bind("127.0.0.1:5000")
-    .unwrap()
-    .run();
+    rocket::ignite().mount("/", routes![update, user]).launch();
 }
 
 fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
                 "{}[{}][{}] {}",
                 chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
                 record.level(),
+                record.target(),
                 message
             ))
         }).level(log::LevelFilter::Info)
