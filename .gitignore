@@ -6,3 +6,5 @@ Cargo.lock
 *.iml
 /src/credentials
 /.env
+
+Rocket\.toml
