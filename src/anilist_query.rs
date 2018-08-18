@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use anilist_models;
 use database;
 
-pub fn get_id(username: &str) -> Option<anilist_models::User> {
+pub fn get_id(
+    username: &str,
+    conn: database::DbConn,
+) -> Option<(anilist_models::User, database::DbConn)> {
     // Construct query to anilist GraphQL to find corresponding id for username
     let query = USER_QUERY.replace("{}", username.as_ref());
     let mut body = HashMap::new();
@@ -17,10 +20,10 @@ pub fn get_id(username: &str) -> Option<anilist_models::User> {
 
     // If the username was valid, there will be some data, else there will be errors
     match json.data.user {
-        Some(user) => {
-            database::update_user_profile(user.clone());
-            Some(user)
-        }
+        Some(user) => match database::update_user_profile(user.clone(), conn) {
+            Some(connection) => Some((user, connection)),
+            None => None,
+        },
         None => {
             error!(
                 "user_name={} was not found in anilist/external database",

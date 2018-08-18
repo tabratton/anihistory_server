@@ -2,7 +2,6 @@
 #![plugin(rocket_codegen)]
 
 extern crate rocket;
-#[macro_use]
 extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
@@ -19,10 +18,9 @@ extern crate fern;
 #[macro_use]
 extern crate log;
 
-use fern::colors::{Color, ColoredLevelConfig};
 use rocket::http::Status;
 use rocket::response::status::Accepted;
-use rocket::response::Failure;
+use rocket::response::status::NotFound;
 use rocket_contrib::Json;
 use std::thread;
 
@@ -33,27 +31,44 @@ mod models;
 mod schema;
 
 #[get("/user/<username>")]
-fn user(username: String) -> Result<Json<models::ResponseList>, Status> {
-    match database::get_list(&username) {
+fn user(
+    username: String,
+    conn: database::DbConn,
+) -> Result<Json<models::ResponseList>, NotFound<String>> {
+    match database::get_list(&username, conn) {
         Some(list) => Ok(Json(list)),
-        None => Err(Status::NotFound),
+        None => Err(NotFound("User or list not found".to_owned())),
     }
 }
 
 #[put("/user/<username>")]
-fn update(username: String) -> Result<Accepted<String>, Status> {
-    match database::get_user(&username) {
-        Ok(user) => {
-            thread::spawn(move || database::update_entries(user.user_id));
-            Ok(Accepted(Some("Added to the queue".to_owned())))
-        }
-        Err(_) => match anilist_query::get_id(&username) {
-            Some(user) => {
-                thread::spawn(move || database::update_entries(user.id));
-                Ok(Accepted(Some("Added to the queue".to_owned())))
+fn update(
+    username: String,
+    rocket_con: database::DbConn,
+) -> Result<Accepted<String>, NotFound<String>> {
+    match anilist_query::get_id(&username, rocket_con) {
+        Some(an_user_tup) => {
+            let connection = database::update_user_profile(an_user_tup.0, an_user_tup.1);
+            let db_result = database::get_user(&username, connection.unwrap());
+            let user_option = db_result.0;
+            let db_res_con = db_result.1;
+            match user_option {
+                Some(u) => {
+                    thread::spawn(move || database::update_entries(u.user_id, db_res_con));
+                    Ok(Accepted(Some("Added to the queue".to_owned())))
+                }
+                None => match anilist_query::get_id(&username, db_res_con) {
+                    Some(an_user_tup_2) => {
+                        thread::spawn(move || {
+                            database::update_entries(an_user_tup_2.0.id, an_user_tup_2.1)
+                        });
+                        Ok(Accepted(Some("Added to the queue".to_owned())))
+                    }
+                    None => Err(NotFound("User not found".to_owned())),
+                },
             }
-            None => Err(Status::NotFound),
-        },
+        }
+        None => return Err(NotFound("User not found".to_owned())),
     }
 }
 
@@ -62,7 +77,10 @@ fn main() {
         std::process::abort()
     }
 
-    rocket::ignite().mount("/", routes![update, user]).launch();
+    rocket::ignite()
+        .manage(database::init_pool())
+        .mount("/", routes![update, user])
+        .launch();
 }
 
 fn setup_logger() -> Result<(), fern::InitError> {
