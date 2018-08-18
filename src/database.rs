@@ -62,38 +62,20 @@ impl Deref for DbConn {
 // Only used for upload_to_s3 because of spawned threads and I didn't want to make the connection
 // pool work with that.
 fn establish_connection() -> PgConnection {
-  dotenv().ok();
-  
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  let result = PgConnection::establish(&database_url);
-  match result {
-	Ok(connection) => connection,
-	Err(error) => {
-	  error!("error connecting to {}. Error: {}", database_url, error);
-	  panic!();
-	}
-  }
-}
+    dotenv().ok();
 
-pub fn get_user(username: &str, connection: DbConn) -> (Option<models::User>, DbConn) {
-    //    let connection = establish_connection();
-    let result: Result<models::User, diesel::result::Error> = users::table
-        .filter(users::name.eq(username))
-        .first(&*connection);
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let result = PgConnection::establish(&database_url);
     match result {
-        Ok(user) => (Some(user), connection),
+        Ok(connection) => connection,
         Err(error) => {
-            error!(
-                "user_name={} was not found in internal database. Error: {}",
-                username, &error
-            );
-            (None, connection)
+            error!("error connecting to {}. Error: {}", database_url, error);
+            panic!();
         }
     }
 }
 
 pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> {
-    //    let connection = establish_connection();
     let database_list = lists::table
         .filter(users::name.eq(name))
         .inner_join(users::table)
@@ -138,9 +120,7 @@ pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> 
     }
 }
 
-pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> Option<DbConn> {
-    // Connect to DB and upsert user entry.
-    //    let connection = establish_connection();
+pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> DbConn {
     let ext = get_ext(&user.avatar.large);
 
     let new_user = models::User {
@@ -160,30 +140,28 @@ pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> Op
         .set(&new_user)
         .execute(&*connection);
 
+    // Download their avatar and upload to S3.
+    let mut content = Vec::new();
+    download_image(&mut content, &user.avatar.large);
+    let new_link = user.avatar.large.clone();
+    upload_to_s3(ImageTypes::User, user.id, ext.clone(), content, new_link);
+
     match result {
-        Ok(_) => {
-            // Download their avatar and upload to S3.
-            let mut content = Vec::new();
-            download_image(&mut content, &user.avatar.large);
-            let new_link = user.avatar.large.clone();
-            upload_to_s3(ImageTypes::User, user.id, ext.clone(), content, new_link);
-            Some(connection)
-        }
+        Ok(_) => connection,
         Err(error) => {
             error!("error saving user={:?}. Error: {}", new_user, error);
-            None
+            connection
         }
     }
 }
 
-pub fn update_entries(id: i32, connection: DbConn) {
+pub fn update_entries(id: i32) {
     let lists: Vec<anilist_models::MediaList> = anilist_query::get_lists(id);
 
     for list in lists {
         if list.name == "Completed" || list.name == "Watching" {
+            let connection = establish_connection();
             for entry in list.entries {
-                // Connect to DB and upsert anime and list entries.
-                //                let connection = establish_connection();
                 let ext = get_ext(&entry.media.cover_image.large);
 
                 let new_anime = models::Anime {
@@ -205,26 +183,26 @@ pub fn update_entries(id: i32, connection: DbConn) {
                     .on_conflict(anime::anime_id)
                     .do_update()
                     .set(&new_anime)
-                    .execute(&*connection);
+                    .execute(&connection);
+
+                // Download cover images and upload to S3.
+                let mut content = Vec::new();
+                download_image(&mut content, &entry.media.cover_image.large);
+                let closure_id = entry.media.id.clone();
+                let closure_ext = ext.clone();
+                let new_link = entry.media.cover_image.large.clone();
+                thread::spawn(move || {
+                    upload_to_s3(
+                        ImageTypes::Anime,
+                        closure_id,
+                        closure_ext,
+                        content,
+                        new_link,
+                    )
+                });
 
                 match anime_result {
-                    Ok(_) => {
-                        // Download cover images and upload to S3.
-                        let mut content = Vec::new();
-                        download_image(&mut content, &entry.media.cover_image.large);
-                        let closure_id = entry.media.id.clone();
-                        let closure_ext = ext.clone();
-                        let new_link = entry.media.cover_image.large.clone();
-                        thread::spawn(move || {
-                            upload_to_s3(
-                                ImageTypes::Anime,
-                                closure_id,
-                                closure_ext,
-                                content,
-                                new_link,
-                            )
-                        });
-                    }
+                    Ok(_) => (),
                     Err(error) => {
                         error!("error saving anime={:?}. Error: {}", new_anime, error);
                     }
@@ -247,7 +225,7 @@ pub fn update_entries(id: i32, connection: DbConn) {
                     .on_conflict((lists::anime_id, lists::user_id))
                     .do_update()
                     .set(&new_list)
-                    .execute(&*connection);
+                    .execute(&connection);
 
                 if list_result.is_err() {
                     error!(
@@ -266,36 +244,10 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
     let image_prefix: String;
     let connection = establish_connection();
     match prefix {
-        ImageTypes::Anime => {
-            image_prefix = "anime".to_owned();
-            let result_anime = anime::table
-                .filter(anime::anime_id.eq(id))
-                .first::<models::Anime>(&connection);
-            match result_anime {
-                Ok(anime) => {
-                    if anime.cover_anilist == new_anilist {
-                        return;
-                    }
-                }
-                Err(_) => (),
-            };
-        }
-        ImageTypes::User => {
-            image_prefix = "user".to_owned();
-            let result_user = users::table
-                .filter(users::user_id.eq(id))
-                .first::<models::User>(&connection);
-            match result_user {
-                Ok(user) => {
-                    if user.avatar_anilist == new_anilist {
-                        return;
-                    }
-                }
-                Err(_) => (),
-            };
-        }
+        ImageTypes::Anime => image_prefix = "anime".to_owned(),
+        ImageTypes::User => image_prefix = "user".to_owned(),
     };
-
+  
     let client = S3Client::new(Region::UsEast1);
     let bucket_name = "anihistory-images";
     let mime = naive_mime(&ext);
@@ -310,6 +262,10 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
         ..PutObjectRequest::default()
     };
 
+    info!(
+        "attempting to upload assets/images{}_{}.{} to S3",
+        image_prefix, id, ext
+    );
     match client.put_object(put_request).sync() {
         Ok(_) => {
             info!(

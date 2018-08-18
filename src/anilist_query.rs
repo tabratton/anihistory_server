@@ -3,12 +3,8 @@ use serde_json::from_str;
 use std::collections::HashMap;
 
 use anilist_models;
-use database;
 
-pub fn get_id(
-    username: &str,
-    conn: database::DbConn,
-) -> Option<(anilist_models::User, database::DbConn)> {
+pub fn get_id(username: &str) -> Option<anilist_models::User> {
     // Construct query to anilist GraphQL to find corresponding id for username
     let query = USER_QUERY.replace("{}", username.as_ref());
     let mut body = HashMap::new();
@@ -20,10 +16,7 @@ pub fn get_id(
 
     // If the username was valid, there will be some data, else there will be errors
     match json.data.user {
-        Some(user) => match database::update_user_profile(user.clone(), conn) {
-            Some(connection) => Some((user, connection)),
-            None => None,
-        },
+        Some(user) => Some(user),
         None => {
             error!(
                 "user_name={} was not found in anilist/external database",

@@ -18,7 +18,6 @@ extern crate fern;
 #[macro_use]
 extern crate log;
 
-use rocket::http::Status;
 use rocket::response::status::Accepted;
 use rocket::response::status::NotFound;
 use rocket_contrib::Json;
@@ -46,29 +45,13 @@ fn update(
     username: String,
     rocket_con: database::DbConn,
 ) -> Result<Accepted<String>, NotFound<String>> {
-    match anilist_query::get_id(&username, rocket_con) {
-        Some(an_user_tup) => {
-            let connection = database::update_user_profile(an_user_tup.0, an_user_tup.1);
-            let db_result = database::get_user(&username, connection.unwrap());
-            let user_option = db_result.0;
-            let db_res_con = db_result.1;
-            match user_option {
-                Some(u) => {
-                    thread::spawn(move || database::update_entries(u.user_id, db_res_con));
-                    Ok(Accepted(Some("Added to the queue".to_owned())))
-                }
-                None => match anilist_query::get_id(&username, db_res_con) {
-                    Some(an_user_tup_2) => {
-                        thread::spawn(move || {
-                            database::update_entries(an_user_tup_2.0.id, an_user_tup_2.1)
-                        });
-                        Ok(Accepted(Some("Added to the queue".to_owned())))
-                    }
-                    None => Err(NotFound("User not found".to_owned())),
-                },
-            }
+    match anilist_query::get_id(&username) {
+        Some(user) => {
+            let _ = database::update_user_profile(user.clone(), rocket_con);
+            thread::spawn(move || database::update_entries(user.id));
+            Ok(Accepted(Some("Added to the queue".to_owned())))
         }
-        None => return Err(NotFound("User not found".to_owned())),
+        None => Err(NotFound("User not found".to_owned())),
     }
 }
 
