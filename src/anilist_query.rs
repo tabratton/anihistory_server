@@ -2,10 +2,10 @@ use reqwest::Client;
 use serde_json::from_str;
 use std::collections::HashMap;
 
+use anilist_models;
 use database;
-use query_structs;
 
-pub fn get_id(username: &str) -> Option<query_structs::User> {
+pub fn get_id(username: &str) -> Option<anilist_models::User> {
     // Construct query to anilist GraphQL to find corresponding id for username
     let query = USER_QUERY.replace("{}", username.as_ref());
     let mut body = HashMap::new();
@@ -13,7 +13,7 @@ pub fn get_id(username: &str) -> Option<query_structs::User> {
     let client = Client::new();
     let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
-    let json: query_structs::UserResponse = from_str(&res_text).unwrap();
+    let json: anilist_models::UserResponse = from_str(&res_text).unwrap();
 
     // If the username was valid, there will be some data, else there will be errors
     match json.data.user {
@@ -31,7 +31,7 @@ pub fn get_id(username: &str) -> Option<query_structs::User> {
     }
 }
 
-pub fn get_lists(id: i32) -> Vec<query_structs::MediaList> {
+pub fn get_lists(id: i32) -> Vec<anilist_models::MediaList> {
     let query = LIST_QUERY.replace("{}", id.to_string().as_ref());
     let mut body = HashMap::new();
     body.insert("query", query);
@@ -39,7 +39,7 @@ pub fn get_lists(id: i32) -> Vec<query_structs::MediaList> {
     let client = Client::new();
     let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
-    let json: query_structs::ListResponse = from_str(&res_text).unwrap();
+    let json: anilist_models::ListResponse = from_str(&res_text).unwrap();
     json.data.media_list_collection.lists.clone()
 }
 

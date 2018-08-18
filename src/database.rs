@@ -12,9 +12,9 @@ use schema::users;
 use std::io::Read;
 use std::{env, thread};
 
+use anilist_models;
 use anilist_query;
 use models;
-use query_structs;
 
 pub fn get_user(username: &str) -> Result<models::User, diesel::result::Error> {
     let connection = establish_connection();
@@ -75,7 +75,7 @@ pub fn get_list(name: &str) -> Option<models::ResponseList> {
     }
 }
 
-pub fn update_user_profile(user: query_structs::User) {
+pub fn update_user_profile(user: anilist_models::User) {
     // Download their avatar and upload to S3.
     let mut content = Vec::new();
     let ext = download_image(&mut content, &user.avatar.large);
@@ -111,7 +111,7 @@ pub fn update_user_profile(user: query_structs::User) {
 }
 
 pub fn update_entries(id: i32) {
-    let lists: Vec<query_structs::MediaList> = anilist_query::get_lists(id);
+    let lists: Vec<anilist_models::MediaList> = anilist_query::get_lists(id);
 
     for list in lists {
         if list.name == "Completed" || list.name == "Watching" {
@@ -251,7 +251,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
     }
 }
 
-fn construct_date(date: query_structs::Date) -> Option<NaiveDate> {
+fn construct_date(date: anilist_models::Date) -> Option<NaiveDate> {
     match date.year {
         Some(year) => match date.month {
             Some(month) => match date.day {
