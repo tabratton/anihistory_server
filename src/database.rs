@@ -139,7 +139,7 @@ pub fn update_entries(id: i32) {
                     anime_id: entry.media.id,
                     description: entry.media.description,
                     cover_s3: format!(
-                        "https://s3.amazonaws.com/anihistory-images/anime_{}.{}",
+                        "https://s3.amazonaws.com/anihistory-images/assets/images/anime_{}.{}",
                         entry.media.id, ext
                     ),
                     cover_anilist: entry.media.cover_image.large.clone(),
@@ -157,8 +157,11 @@ pub fn update_entries(id: i32) {
                     .execute(&connection);
 
                 if anime_result.is_err() {
-                    error!("error saving anime={:?}. Error: {}", new_anime, anime_result.expect_err
-					  ("?"));
+                    error!(
+                        "error saving anime={:?}. Error: {}",
+                        new_anime,
+                        anime_result.expect_err("?")
+                    );
                 }
 
                 let start = construct_date(entry.started_at);
@@ -181,8 +184,11 @@ pub fn update_entries(id: i32) {
                     .execute(&connection);
 
                 if list_result.is_err() {
-                    error!("error saving list_entry={:?}. Error: {}", new_list, list_result
-					  .expect_err("?"));
+                    error!(
+                        "error saving list_entry={:?}. Error: {}",
+                        new_list,
+                        list_result.expect_err("?")
+                    );
                 }
             }
         }
@@ -227,7 +233,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
     let client = S3Client::new(Region::UsEast1);
     let bucket_name = "anihistory-images";
     let mime = naive_mime(&ext);
-    let key = format!("{}_{}.{}", image_prefix, id, ext);
+    let key = format!("assets/images/{}_{}.{}", image_prefix, id, ext);
 
     let put_request = PutObjectRequest {
         bucket: bucket_name.to_owned(),
@@ -240,11 +246,14 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
 
     match client.put_object(put_request).sync() {
         Ok(_) => {
-            info!("uploaded {}_{}.{} to S3", image_prefix, id, ext);
+            info!(
+                "uploaded assets/images/{}_{}.{} to S3",
+                image_prefix, id, ext
+            );
         }
         Err(error) => {
             error!(
-                "error uploading {}_{}.{} to S3. Error: {}",
+                "error uploading assets/images/{}_{}.{} to S3. Error: {}",
                 image_prefix, id, ext, error
             );
         }
