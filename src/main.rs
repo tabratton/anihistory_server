@@ -1,6 +1,7 @@
-#![feature(plugin)]
+#![feature(plugin, decl_macro)]
 #![plugin(rocket_codegen)]
 
+#[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
 #[macro_use]
@@ -34,7 +35,7 @@ fn user(
     username: String,
     conn: database::DbConn,
 ) -> Result<Json<models::ResponseList>, NotFound<String>> {
-    match database::get_list(&username, conn) {
+    match database::get_list(username.as_ref(), conn) {
         Some(list) => Ok(Json(list)),
         None => Err(NotFound("User or list not found".to_owned())),
     }
@@ -45,7 +46,7 @@ fn update(
     username: String,
     rocket_con: database::DbConn,
 ) -> Result<Accepted<String>, NotFound<String>> {
-    match anilist_query::get_id(&username) {
+    match anilist_query::get_id(username.as_ref()) {
         Some(user) => {
             let _ = database::update_user_profile(user.clone(), rocket_con);
             thread::spawn(move || database::update_entries(user.id));

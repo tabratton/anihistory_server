@@ -12,7 +12,7 @@ pub fn get_id(username: &str) -> Option<anilist_models::User> {
     let client = Client::new();
     let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
-    let json: anilist_models::UserResponse = from_str(&res_text).unwrap();
+    let json: anilist_models::UserResponse = from_str(res_text.as_ref()).unwrap();
 
     // If the username was valid, there will be some data, else there will be errors
     match json.data.user {
@@ -35,7 +35,7 @@ pub fn get_lists(id: i32) -> Vec<anilist_models::MediaList> {
     let client = Client::new();
     let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
-    let json: anilist_models::ListResponse = from_str(&res_text).unwrap();
+    let json: anilist_models::ListResponse = from_str(res_text.as_ref()).unwrap();
     json.data.media_list_collection.lists.clone()
 }
 

@@ -29,7 +29,10 @@ pub fn init_pool() -> PostgresPool {
     dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let manager = ConnectionManager::<PgConnection>::new(database_url);
-    Pool::new(manager).expect("db pool")
+    Pool::builder()
+        .max_size(10)
+        .build(manager)
+        .expect("db pool")
 }
 
 // Connection request guard type: a wrapper around an r2d2 pooled connection.
@@ -50,12 +53,12 @@ impl<'a, 'r> FromRequest<'a, 'r> for DbConn {
     }
 }
 
-// For the convenience of using an &DbConn as an &SqliteConnection.
+// For the convenience of using an &DbConn as an &PgConnection.
 impl Deref for DbConn {
     type Target = PgConnection;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.deref()
     }
 }
 
@@ -65,7 +68,7 @@ fn establish_connection() -> PgConnection {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let result = PgConnection::establish(&database_url);
+    let result = PgConnection::establish(database_url.as_ref());
     match result {
         Ok(connection) => connection,
         Err(error) => {
@@ -143,8 +146,7 @@ pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> Db
     // Download their avatar and upload to S3.
     let mut content = Vec::new();
     download_image(&mut content, &user.avatar.large);
-    let new_link = user.avatar.large.clone();
-    upload_to_s3(ImageTypes::User, user.id, ext.clone(), content, new_link);
+    upload_to_s3(ImageTypes::User, user.id, ext.clone(), content);
 
     match result {
         Ok(_) => connection,
@@ -185,24 +187,17 @@ pub fn update_entries(id: i32) {
                     .set(&new_anime)
                     .execute(&connection);
 
-                // Download cover images and upload to S3.
-                let mut content = Vec::new();
-                download_image(&mut content, &entry.media.cover_image.large);
-                let closure_id = entry.media.id.clone();
-                let closure_ext = ext.clone();
-                let new_link = entry.media.cover_image.large.clone();
-                thread::spawn(move || {
-                    upload_to_s3(
-                        ImageTypes::Anime,
-                        closure_id,
-                        closure_ext,
-                        content,
-                        new_link,
-                    )
-                });
-
                 match anime_result {
-                    Ok(_) => (),
+                    Ok(_) => {
+                        // Download cover images and upload to S3.
+                        let mut content = Vec::new();
+                        download_image(&mut content, &entry.media.cover_image.large);
+                        let closure_id = entry.media.id.clone();
+                        let closure_ext = ext.clone();
+                        thread::spawn(move || {
+                            upload_to_s3(ImageTypes::Anime, closure_id, closure_ext, content)
+                        });
+                    }
                     Err(error) => {
                         error!("error saving anime={:?}. Error: {}", new_anime, error);
                     }
@@ -240,14 +235,13 @@ pub fn update_entries(id: i32) {
     info!("Database updated for user_id={}", id);
 }
 
-fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_anilist: String) {
+fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>) {
     let image_prefix: String;
-    let connection = establish_connection();
     match prefix {
         ImageTypes::Anime => image_prefix = "anime".to_owned(),
         ImageTypes::User => image_prefix = "user".to_owned(),
     };
-  
+
     let client = S3Client::new(Region::UsEast1);
     let bucket_name = "anihistory-images";
     let mime = naive_mime(&ext);
@@ -263,7 +257,7 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>, new_
     };
 
     info!(
-        "attempting to upload assets/images{}_{}.{} to S3",
+        "attempting to upload assets/images/{}_{}.{} to S3",
         image_prefix, id, ext
     );
     match client.put_object(put_request).sync() {
