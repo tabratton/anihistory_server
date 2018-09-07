@@ -38,8 +38,9 @@ pub struct List {
 
 #[derive(Serialize, Deserialize)]
 pub struct ResponseList {
-    pub user: User,
-    pub items: Vec<ResponseItem>,
+    pub name: String,
+    pub avatar_s3: String,
+    pub data: Vec<ResponseItem>,
 }
 
 #[derive(Serialize, Deserialize)]

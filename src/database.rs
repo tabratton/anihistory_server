@@ -106,8 +106,9 @@ pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> 
                     items.push(item);
                 }
                 Some(models::ResponseList {
-                    user: v[0].1.clone(),
-                    items,
+                    name: v[0].1.name.clone(),
+                    avatar_s3: v[0].1.avatar_s3.clone(),
+                    data: items,
                 })
             } else {
                 None
@@ -123,7 +124,7 @@ pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> 
     }
 }
 
-pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> DbConn {
+pub fn update_user_profile(user: anilist_models::User, connection: DbConn) {
     let ext = get_ext(&user.avatar.large);
 
     let new_user = models::User {
@@ -149,10 +150,10 @@ pub fn update_user_profile(user: anilist_models::User, connection: DbConn) -> Db
     upload_to_s3(ImageTypes::User, user.id, ext.clone(), content);
 
     match result {
-        Ok(_) => connection,
+        Ok(_) => (),
         Err(error) => {
             error!("error saving user={:?}. Error: {}", new_user, error);
-            connection
+            ()
         }
     }
 }
