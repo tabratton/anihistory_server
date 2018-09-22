@@ -162,7 +162,9 @@ pub fn update_entries(id: i32) {
     let lists: Vec<anilist_models::MediaList> = anilist_query::get_lists(id);
 
     for list in lists {
-        if list.name == "Completed" || list.name == "Watching" {
+        if list.name.to_lowercase().contains("completed")
+            || list.name.to_lowercase().contains("watching")
+        {
             let connection = establish_connection();
             for entry in list.entries {
                 let ext = get_ext(&entry.media.cover_image.large);
@@ -257,17 +259,8 @@ fn upload_to_s3(prefix: ImageTypes, id: i32, ext: String, content: Vec<u8>) {
         ..PutObjectRequest::default()
     };
 
-    info!(
-        "attempting to upload assets/images/{}_{}.{} to S3",
-        image_prefix, id, ext
-    );
     match client.put_object(put_request).sync() {
-        Ok(_) => {
-            info!(
-                "uploaded assets/images/{}_{}.{} to S3",
-                image_prefix, id, ext
-            );
-        }
+        Ok(_) => (),
         Err(error) => {
             error!(
                 "error uploading assets/images/{}_{}.{} to S3. Error: {}",
