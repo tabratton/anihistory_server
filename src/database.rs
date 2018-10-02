@@ -158,14 +158,70 @@ pub fn update_user_profile(user: anilist_models::User, connection: DbConn) {
     }
 }
 
+pub fn delete_entries(lists: Vec<anilist_models::MediaList>, id: i32) {
+    let connection = establish_connection();
+    let mut used_lists = Vec::new();
+
+    for mut list in lists {
+        if list.name.to_lowercase().contains("completed")
+            || list.name.to_lowercase().contains("watching")
+        {
+            list.entries
+                .sort_unstable_by(|a, b| a.media.id.cmp(&b.media.id));
+            used_lists.push(list.clone());
+        }
+    }
+
+    let user_db_list_result = lists::table
+        .filter(lists::user_id.eq(id))
+        .load::<models::List>(&connection);
+
+    match user_db_list_result {
+        Ok(list_data) => {
+            for item in list_data {
+                let mut found = false;
+
+                for list in used_lists.clone() {
+                    let result = list
+                        .entries
+                        .binary_search_by(|e| e.media.id.cmp(&item.anime_id));
+                    match result {
+                        Ok(_) => found = true,
+                        Err(_) => {}
+                    }
+                }
+
+                if !found {
+                    println!("deleting anime:{}", item.anime_id);
+                    let delete_result = diesel::delete(lists::table)
+                        .filter(lists::user_id.eq(id).and(lists::anime_id.eq(item.anime_id)))
+                        .execute(&connection);
+                    if delete_result.is_err() {
+                        error!(
+                            "error deleting list_entry={:?}. Error: {}",
+                            item,
+                            delete_result.expect_err("?")
+                        );
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            error!("error retrieving list for user_id={:?}. Error: {}", id, err);
+        }
+    }
+}
+
 pub fn update_entries(id: i32) {
     let lists: Vec<anilist_models::MediaList> = anilist_query::get_lists(id);
+
+    delete_entries(lists.clone(), id);
+    let connection = establish_connection();
 
     for list in lists {
         if list.name.to_lowercase().contains("completed")
             || list.name.to_lowercase().contains("watching")
         {
-            let connection = establish_connection();
             for entry in list.entries {
                 let ext = get_ext(&entry.media.cover_image.large);
 

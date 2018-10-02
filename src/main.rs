@@ -64,7 +64,7 @@ fn main() {
         std::process::abort()
     }
 
-    let (allowed_origins, failed_origins) = AllowedOrigins::some(&[
+    let (allowed_origins, _failed_origins) = AllowedOrigins::some(&[
         "http://localhost:4200",
         "http://localhost",
         "https://anihistory.moe",
@@ -96,7 +96,8 @@ fn setup_logger() -> Result<(), fern::InitError> {
                 record.target(),
                 message
             ))
-        }).level(log::LevelFilter::Info)
+        })
+        .level(log::LevelFilter::Info)
         .chain(std::io::stdout())
         .chain(fern::log_file("trx.log")?)
         .apply()?;
