@@ -86,7 +86,7 @@ fn establish_connection() -> PgConnection {
     }
 }
 
-pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> {
+pub fn get_list(name: &str, connection: DbConn) -> Option<models::RestResponse> {
     let database_list = lists::table
         .filter(users::name.eq(name))
         .inner_join(users::table)
@@ -108,15 +108,17 @@ pub fn get_list(name: &str, connection: DbConn) -> Option<models::ResponseList> 
                         romaji: t.2.romaji,
                         english: t.2.english,
                         description: t.2.description,
-                        cover_s3: t.2.cover_s3,
+                        cover: t.2.cover_s3,
                     };
 
                     items.push(item);
                 }
-                Some(models::ResponseList {
-                    name: v[0].1.name.clone(),
-                    avatar_s3: v[0].1.avatar_s3.clone(),
-                    data: items,
+                Some(models::RestResponse {
+                    users: models::ResponseList {
+                        id: v[0].1.name.clone(),
+                        avatar: v[0].1.avatar_s3.clone(),
+                        list: items,
+                    },
                 })
             } else {
                 None

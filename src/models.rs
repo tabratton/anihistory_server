@@ -45,10 +45,15 @@ pub struct List {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct RestResponse {
+    pub users: ResponseList,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ResponseList {
-    pub name: String,
-    pub avatar_s3: String,
-    pub data: Vec<ResponseItem>,
+    pub id: String,
+    pub avatar: String,
+    pub list: Vec<ResponseItem>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,5 +67,5 @@ pub struct ResponseItem {
     pub romaji: Option<String>,
     pub english: Option<String>,
     pub description: String,
-    pub cover_s3: String,
+    pub cover: String,
 }

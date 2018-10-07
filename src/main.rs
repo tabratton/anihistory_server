@@ -45,7 +45,7 @@ mod schema;
 fn user(
     username: String,
     conn: database::DbConn,
-) -> Result<Json<models::ResponseList>, NotFound<String>> {
+) -> Result<Json<models::RestResponse>, NotFound<String>> {
     match database::get_list(username.as_ref(), conn) {
         Some(list) => Ok(Json(list)),
         None => Err(NotFound("User or list not found".to_owned())),
