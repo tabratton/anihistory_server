@@ -1,3 +1,3 @@
-# anihistory_server
+# anihistory_backend
 
-The server for [anihistory.moe](https://anihistory.moe)
+The backend for [anihistory.moe](https://anihistory.moe)
