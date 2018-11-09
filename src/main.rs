@@ -6,32 +6,32 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#![feature(plugin, decl_macro)]
-#![plugin(rocket_codegen)]
+#![feature(proc_macro_hygiene, decl_macro)]
 
 #[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate log;
+#[macro_use]
 extern crate rocket;
+#[macro_use]
 extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
+extern crate chrono;
+extern crate dotenv;
+extern crate fern;
 extern crate reqwest;
+extern crate rocket_cors;
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
-extern crate diesel;
-extern crate chrono;
-extern crate dotenv;
-extern crate fern;
-#[macro_use]
-extern crate log;
-extern crate rocket_cors;
 
 use rocket::http::Method;
 use rocket::response::status::Accepted;
 use rocket::response::status::NotFound;
-use rocket_contrib::Json;
+use rocket_contrib::json::Json;
 use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::thread;
 
