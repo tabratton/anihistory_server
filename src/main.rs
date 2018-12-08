@@ -31,6 +31,7 @@ extern crate serde_json;
 use rocket::http::Method;
 use rocket::response::status::Accepted;
 use rocket::response::status::NotFound;
+use rocket_contrib::databases::diesel as rocket_diesel;
 use rocket_contrib::json::Json;
 use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::thread;
@@ -41,25 +42,22 @@ mod database;
 mod models;
 mod schema;
 
+#[database("postgres_connection")]
+pub struct PgDbConn(rocket_diesel::PgConnection);
+
 #[get("/users/<username>")]
-fn user(
-    username: String,
-    conn: database::DbConn,
-) -> Result<Json<models::RestResponse>, NotFound<String>> {
-    match database::get_list(username.as_ref(), conn) {
+fn user(username: String, conn: PgDbConn) -> Result<Json<models::RestResponse>, NotFound<String>> {
+    match database::get_list(username.as_ref(), &conn) {
         Some(list) => Ok(Json(list)),
         None => Err(NotFound("User or list not found".to_owned())),
     }
 }
 
 #[post("/users/<username>")]
-fn update(
-    username: String,
-    rocket_con: database::DbConn,
-) -> Result<Accepted<String>, NotFound<String>> {
+fn update(username: String, rocket_con: PgDbConn) -> Result<Accepted<String>, NotFound<String>> {
     match anilist_query::get_id(username.as_ref()) {
         Some(user) => {
-            database::update_user_profile(user.clone(), rocket_con);
+            database::update_user_profile(user.clone(), &rocket_con);
             thread::spawn(move || database::update_entries(user.id));
             Ok(Accepted(Some("Added to the queue".to_owned())))
         }
@@ -74,7 +72,6 @@ fn main() {
 
     let (allowed_origins, _failed_origins) = AllowedOrigins::some(&[
         "http://localhost:4200",
-        "http://localhost",
         "https://anihistory.moe",
     ]);
 
@@ -88,9 +85,9 @@ fn main() {
     };
 
     rocket::ignite()
-        .manage(database::init_pool())
         .mount("/", routes![update, user])
         .attach(options)
+        .attach(PgDbConn::fairing())
         .launch();
 }
 

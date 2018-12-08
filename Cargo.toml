@@ -11,7 +11,7 @@ log = "0.4.6"
 fern = "0.5.7"
 reqwest = "0.9.5"
 rocket = "0.4.0"
-rocket_contrib = { version="0.4.0", default-features=false, features=["json"] }
+rocket_contrib = { version="0.4.0", default-features=false, features=["json", "diesel_postgres_pool"] }
 rusoto_core = "0.35.0"
 rusoto_s3 = "0.35.0"
 serde_derive = "1.0.81"
