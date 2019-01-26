@@ -67,6 +67,7 @@ pub fn get_list(
                         english: t.2.english,
                         description: t.2.description,
                         cover: t.2.cover_s3,
+					  	id: t.2.anime_id,
                     };
 
                     items.push(item);
