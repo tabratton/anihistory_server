@@ -68,5 +68,5 @@ pub struct ResponseItem {
     pub english: Option<String>,
     pub description: String,
     pub cover: String,
-  	pub id: i32
+    pub id: i32,
 }

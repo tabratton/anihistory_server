@@ -33,6 +33,7 @@ use rocket::response::status::Accepted;
 use rocket::response::status::NotFound;
 use rocket_contrib::databases::diesel as rocket_diesel;
 use rocket_contrib::json::Json;
+use rocket_contrib::serve::StaticFiles;
 use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::thread;
 
@@ -73,19 +74,23 @@ fn main() {
     let (allowed_origins, _failed_origins) = AllowedOrigins::some(&[
         "http://localhost:4200",
         "https://anihistory.moe",
-	    "https://www.anihistory.moe"
+        "https://www.anihistory.moe",
     ]);
 
     // You can also deserialize this
     let options = rocket_cors::Cors {
         allowed_origins,
-        allowed_methods: vec![Method::Get, Method::Post].into_iter().map(From::from).collect(),
+        allowed_methods: vec![Method::Get, Method::Post]
+            .into_iter()
+            .map(From::from)
+            .collect(),
         allowed_headers: AllowedHeaders::all(),
         allow_credentials: true,
         ..Default::default()
     };
 
     rocket::ignite()
+	    .mount("/", StaticFiles::from("static"))
         .mount("/", routes![update, user])
         .attach(options)
         .attach(PgDbConn::fairing())
