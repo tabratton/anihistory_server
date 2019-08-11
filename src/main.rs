@@ -34,6 +34,7 @@ use rocket::response::status::NotFound;
 use rocket_contrib::databases::diesel as rocket_diesel;
 use rocket_contrib::json::Json;
 use rocket_contrib::serve::StaticFiles;
+use rocket_cors::Error;
 use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::thread;
 
@@ -66,19 +67,19 @@ fn update(username: String, rocket_con: PgDbConn) -> Result<Accepted<String>, No
     }
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     if setup_logger().is_err() {
         std::process::abort()
     }
 
-    let (allowed_origins, _failed_origins) = AllowedOrigins::some(&[
+    let allowed_origins = AllowedOrigins::some_exact(&[
         "http://localhost:4200",
         "https://anihistory.moe",
         "https://www.anihistory.moe",
     ]);
-
+  
     // You can also deserialize this
-    let options = rocket_cors::Cors {
+    let cors = rocket_cors::CorsOptions {
         allowed_origins,
         allowed_methods: vec![Method::Get, Method::Post]
             .into_iter()
@@ -87,14 +88,17 @@ fn main() {
         allowed_headers: AllowedHeaders::all(),
         allow_credentials: true,
         ..Default::default()
-    };
+    }
+    .to_cors()?;
 
     rocket::ignite()
-	    .mount("/", StaticFiles::from("static"))
+        .mount("/", StaticFiles::from("static"))
         .mount("/", routes![update, user])
-        .attach(options)
+        .attach(cors)
         .attach(PgDbConn::fairing())
         .launch();
+
+    Ok(())
 }
 
 fn setup_logger() -> Result<(), fern::InitError> {
