@@ -25,6 +25,7 @@ extern crate reqwest;
 extern crate rocket_cors;
 extern crate rusoto_core;
 extern crate rusoto_s3;
+extern crate rusoto_signature;
 extern crate serde;
 extern crate serde_json;
 
