@@ -78,7 +78,7 @@ fn main() -> Result<(), Error> {
         "https://anihistory.moe",
         "https://www.anihistory.moe",
     ]);
-  
+
     // You can also deserialize this
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
