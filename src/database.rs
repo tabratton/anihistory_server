@@ -11,7 +11,7 @@ use diesel;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use dotenv::dotenv;
-use reqwest::get;
+use reqwest::blocking::get;
 use rocket_contrib::databases::diesel as rocket_diesel;
 use rusoto_core::Region;
 use rusoto_s3::{PutObjectRequest, S3Client, S3};

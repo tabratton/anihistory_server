@@ -6,7 +6,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use reqwest::Client;
+use reqwest::blocking::Client;
 use serde_json::from_str;
 use std::collections::HashMap;
 
