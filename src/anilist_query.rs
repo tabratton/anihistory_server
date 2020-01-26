@@ -6,11 +6,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::anilist_models;
+use log::error;
 use reqwest::blocking::Client;
 use serde_json::from_str;
 use std::collections::HashMap;
-
-use anilist_models;
 
 pub fn get_id(username: &str) -> Option<anilist_models::User> {
     // Construct query to anilist GraphQL to find corresponding id for username
@@ -18,7 +18,7 @@ pub fn get_id(username: &str) -> Option<anilist_models::User> {
     let mut body = HashMap::new();
     body.insert("query", query);
     let client = Client::new();
-    let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
+    let res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
     let json: anilist_models::UserResponse = from_str(res_text.as_ref()).unwrap();
 
@@ -41,7 +41,7 @@ pub fn get_lists(id: i32) -> Vec<anilist_models::MediaList> {
     body.insert("query", query);
 
     let client = Client::new();
-    let mut res = client.post(ANILSIT_URL).json(&body).send().unwrap();
+    let res = client.post(ANILSIT_URL).json(&body).send().unwrap();
     let res_text = res.text().unwrap();
     let json: anilist_models::ListResponse = from_str(res_text.as_ref()).unwrap();
     json.data.media_list_collection.lists.clone()

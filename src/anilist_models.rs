@@ -6,6 +6,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use serde_derive::{Deserialize, Serialize};
+
 // User Structs
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserResponse {
