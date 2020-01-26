@@ -15,7 +15,7 @@ use rocket_contrib::databases::postgres::{Connection, TlsMode};
 use rusoto_core::Region;
 use rusoto_s3::{PutObjectRequest, S3Client, S3};
 use std::io::Read;
-use std::{env, thread};
+use std::{env, thread, panic};
 
 // Only used for upload_to_s3 because of spawned threads and I didn't want to make the connection
 // pool work with that.
@@ -35,7 +35,10 @@ fn establish_connection() -> Connection {
 
 pub fn get_list(name: &str, connection: &postgres::Connection) -> Option<models::RestResponse> {
     let stmt = connection
-	  .prepare_cached("SELECT u.user_id, u.name, u.avatar_s3, u.avatar_anilist, a.anime_id, a.description, a.cover_s3, a.cover_anilist, a.average, a.native, a.romaji, a.english FROM lists as l INNER JOIN users as u ON lists.user_id=users.user_id INNER JOIN anime as a ON lists.anime_id=anime.anime_id WHERE users.name = $1")
+	  .prepare_cached("SELECT u.user_id, u.name, u.avatar_s3, u.avatar_anilist, a.anime_id, a\
+	  .description, a.cover_s3, a.cover_anilist, a.average, a.native, a.romaji, a.english, l\
+	  .user_title, l.start_day, l.end_day, l.score FROM lists as l INNER JOIN users as u ON l\
+	  .user_id=u.user_id INNER JOIN anime as a ON l.anime_id=a.anime_id WHERE u.name = $1")
 	  .unwrap();
 
     let results = stmt.query(&[&name]);
