@@ -8,31 +8,14 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[macro_use]
-extern crate diesel;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate rocket;
-#[macro_use]
-extern crate rocket_contrib;
-#[macro_use]
-extern crate serde_derive;
-extern crate chrono;
-extern crate dotenv;
-extern crate fern;
-extern crate reqwest;
-extern crate rocket_cors;
-extern crate rusoto_core;
-extern crate rusoto_s3;
-extern crate rusoto_signature;
-extern crate serde;
-extern crate serde_json;
-
+use rocket::get;
 use rocket::http::Method;
+use rocket::post;
 use rocket::response::status::Accepted;
 use rocket::response::status::NotFound;
-use rocket_contrib::databases::diesel as rocket_diesel;
+use rocket::routes;
+use rocket_contrib::database;
+use rocket_contrib::databases::postgres;
 use rocket_contrib::json::Json;
 use rocket_contrib::serve::StaticFiles;
 use rocket_cors::Error;
@@ -43,24 +26,26 @@ mod anilist_models;
 mod anilist_query;
 mod database;
 mod models;
-mod schema;
 
 #[database("postgres_connection")]
-pub struct PgDbConn(rocket_diesel::PgConnection);
+pub struct PgDbConn(postgres::Connection);
 
 #[get("/users/<username>")]
-fn user(username: String, conn: PgDbConn) -> Result<Json<models::RestResponse>, NotFound<String>> {
-    match database::get_list(username.as_ref(), &conn) {
+fn user(
+    username: String,
+    database_conn: PgDbConn,
+) -> Result<Json<models::RestResponse>, NotFound<String>> {
+    match database::get_list(username.as_ref(), &database_conn) {
         Some(list) => Ok(Json(list)),
         None => Err(NotFound("User or list not found".to_owned())),
     }
 }
 
 #[post("/users/<username>")]
-fn update(username: String, rocket_con: PgDbConn) -> Result<Accepted<String>, NotFound<String>> {
+fn update(username: String, database_conn: PgDbConn) -> Result<Accepted<String>, NotFound<String>> {
     match anilist_query::get_id(username.as_ref()) {
         Some(user) => {
-            database::update_user_profile(user.clone(), &rocket_con);
+            database::update_user_profile(user.clone(), &database_conn);
             thread::spawn(move || database::update_entries(user.id));
             Ok(Accepted(Some("Added to the queue".to_owned())))
         }

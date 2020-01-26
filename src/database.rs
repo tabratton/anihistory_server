@@ -6,32 +6,24 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::{anilist_models, anilist_query, models};
 use chrono::NaiveDate;
-use diesel;
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
 use dotenv::dotenv;
-use reqwest::get;
-use rocket_contrib::databases::diesel as rocket_diesel;
+use log::{error, info};
+use reqwest::blocking::get;
+use rocket_contrib::databases::postgres::{Connection, TlsMode};
 use rusoto_core::Region;
 use rusoto_s3::{PutObjectRequest, S3Client, S3};
-use schema::anime;
-use schema::lists;
-use schema::users;
 use std::io::Read;
 use std::{env, thread};
 
-use anilist_models;
-use anilist_query;
-use models;
-
 // Only used for upload_to_s3 because of spawned threads and I didn't want to make the connection
 // pool work with that.
-fn establish_connection() -> PgConnection {
+fn establish_connection() -> Connection {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let result = PgConnection::establish(database_url.as_ref());
+    let result = Connection::connect(database_url.as_ref(), TlsMode::None);
     match result {
         Ok(connection) => connection,
         Err(error) => {
@@ -41,42 +33,76 @@ fn establish_connection() -> PgConnection {
     }
 }
 
-pub fn get_list(
-    name: &str,
-    connection: &rocket_diesel::PgConnection,
-) -> Option<models::RestResponse> {
-    let database_list = lists::table
-        .filter(users::name.eq(name))
-        .inner_join(users::table)
-        .inner_join(anime::table)
-        .load::<(models::List, models::User, models::Anime)>(connection);
+pub fn get_list(name: &str, connection: &postgres::Connection) -> Option<models::RestResponse> {
+    let stmt = connection
+	  .prepare_cached("SELECT u.user_id, u.name, u.avatar_s3, u.avatar_anilist, a.anime_id, a.description, a.cover_s3, a.cover_anilist, a.average, a.native, a.romaji, a.english FROM lists as l INNER JOIN users as u ON lists.user_id=users.user_id INNER JOIN anime as a ON lists.anime_id=anime.anime_id WHERE users.name = $1")
+	  .unwrap();
 
-    match database_list {
-        Ok(v) => {
-            if v.len() > 0 {
-                let mut items: Vec<models::ResponseItem> = Vec::with_capacity(v.len());
-                for t in v.clone() {
+    let results = stmt.query(&[&name]);
+
+    match results {
+        Ok(result) => {
+            let mut database_list: Vec<models::ListItemMap> = Vec::with_capacity(result.len());
+            for row in result.iter() {
+                let user = models::User {
+                    user_id: row.get(0),
+                    name: row.get(1),
+                    avatar_s3: row.get(2),
+                    avatar_anilist: row.get(3),
+                };
+
+                let anime = models::Anime {
+                    anime_id: row.get(4),
+                    description: row.get(5),
+                    cover_s3: row.get(6),
+                    cover_anilist: row.get(7),
+                    average: row.get(8),
+                    native: row.get(9),
+                    romaji: row.get(10),
+                    english: row.get(11),
+                };
+
+                let list_item = models::ListItem {
+                    user_id: row.get(0),
+                    anime_id: row.get(4),
+                    user_title: row.get(12),
+                    start_day: row.get(13),
+                    end_day: row.get(14),
+                    score: row.get(15),
+                };
+
+                database_list.push(models::ListItemMap {
+                    user,
+                    anime,
+                    list_item,
+                });
+            }
+
+            if database_list.len() > 0 {
+                let mut response_items: Vec<models::ResponseItem> =
+                    Vec::with_capacity(database_list.len());
+                for list_item in database_list.clone() {
                     let item = models::ResponseItem {
-                        user_title: t.0.user_title,
-                        start_day: t.0.start_day,
-                        end_day: t.0.end_day,
-                        score: t.0.score,
-                        average: t.2.average,
-                        native: t.2.native,
-                        romaji: t.2.romaji,
-                        english: t.2.english,
-                        description: t.2.description,
-                        cover: t.2.cover_s3,
-                        id: t.2.anime_id,
+                        user_title: list_item.list_item.user_title,
+                        start_day: list_item.list_item.start_day,
+                        end_day: list_item.list_item.end_day,
+                        score: list_item.list_item.score,
+                        average: list_item.anime.average,
+                        native: list_item.anime.native,
+                        romaji: list_item.anime.romaji,
+                        english: list_item.anime.english,
+                        description: list_item.anime.description,
+                        cover: list_item.anime.cover_s3,
+                        id: list_item.anime.anime_id,
                     };
 
-                    items.push(item);
+                    response_items.push(item);
                 }
                 Some(models::RestResponse {
                     users: models::ResponseList {
-                        id: v[0].1.name.clone(),
-                        avatar: v[0].1.avatar_s3.clone(),
-                        list: items,
+                        id: database_list[0].user.name.clone(),
+                        avatar: database_list[0].user.avatar_s3.clone(),
+                        list: response_items,
                     },
                 })
             } else {
@@ -93,7 +119,7 @@ pub fn get_list(
     }
 }
 
-pub fn update_user_profile(user: anilist_models::User, connection: &rocket_diesel::PgConnection) {
+pub fn update_user_profile(user: anilist_models::User, connection: &Connection) {
     let ext = get_ext(&user.avatar.large);
 
     let new_user = models::User {
@@ -106,12 +132,14 @@ pub fn update_user_profile(user: anilist_models::User, connection: &rocket_diese
         avatar_anilist: user.avatar.large.clone(),
     };
 
-    let result = diesel::insert_into(users::table)
-        .values(&new_user)
-        .on_conflict(users::user_id)
-        .do_update()
-        .set(&new_user)
-        .execute(connection);
+    let stmt = connection.prepare_cached("INSERT INTO users (user_id, name, avatar_s3, avatar_anilist) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO UPDATE SET name = excluded.name, avatar_s3 = excluded.avatar_s3, avatar_anilist = excluded.avatar_anilist").unwrap();
+
+    let result = stmt.execute(&[
+        &new_user.user_id,
+        &new_user.name,
+        &new_user.avatar_s3,
+        &new_user.avatar_anilist,
+    ]);
 
     // Download their avatar and upload to S3.
     let mut content = Vec::new();
@@ -141,19 +169,28 @@ pub fn delete_entries(lists: Vec<anilist_models::MediaList>, id: i32) {
         }
     }
 
-    let user_db_list_result = lists::table
-        .filter(lists::user_id.eq(id))
-        .load::<models::List>(&connection);
+    let stmt = connection.prepare_cached("SELECT user_id, anime_id, user_title, start_day, end_day, score FROM lists WHERE user_id = $1").unwrap();
+
+    let user_db_list_result = stmt.query(&[&id]);
 
     match user_db_list_result {
-        Ok(list_data) => {
-            for item in list_data {
+        Ok(rows) => {
+            for row in rows.iter() {
+                let list_item = models::ListItem {
+                    user_id: row.get(0),
+                    anime_id: row.get(1),
+                    user_title: row.get(2),
+                    start_day: row.get(3),
+                    end_day: row.get(4),
+                    score: row.get(5),
+                };
+
                 let mut found = false;
 
                 for list in used_lists.clone() {
                     let result = list
                         .entries
-                        .binary_search_by(|e| e.media.id.cmp(&item.anime_id));
+                        .binary_search_by(|e| e.media.id.cmp(&list_item.anime_id));
                     match result {
                         Ok(_) => found = true,
                         Err(_) => {}
@@ -161,14 +198,17 @@ pub fn delete_entries(lists: Vec<anilist_models::MediaList>, id: i32) {
                 }
 
                 if !found {
-                    println!("deleting anime:{}", item.anime_id);
-                    let delete_result = diesel::delete(lists::table)
-                        .filter(lists::user_id.eq(id).and(lists::anime_id.eq(item.anime_id)))
-                        .execute(&connection);
+                    println!("deleting anime:{}", list_item.anime_id);
+                    let stmt = connection
+                        .prepare_cached("DELETE FROM lists WHERE user_id = $1 AND anime_id = $2")
+                        .unwrap();
+
+                    let delete_result = stmt.execute(&[&list_item.user_id, &list_item.anime_id]);
+
                     if delete_result.is_err() {
                         error!(
                             "error deleting list_entry={:?}. Error: {}",
-                            item,
+                            row,
                             delete_result.expect_err("?")
                         );
                     }
@@ -208,12 +248,18 @@ pub fn update_entries(id: i32) {
                     english: entry.media.title.english,
                 };
 
-                let anime_result = diesel::insert_into(anime::table)
-                    .values(&new_anime)
-                    .on_conflict(anime::anime_id)
-                    .do_update()
-                    .set(&new_anime)
-                    .execute(&connection);
+                let stmt = connection.prepare_cached("INSERT INTO anime (anime_id, description, cover_s3, cover_anilist, average, native, romaji, english) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (anime_id) DO UPDATE SET description = excluded.description, cover_s3 = excluded.cover_s3, cover_anilist = excluded.cover_anilist, average = excluded.average, native = excluded.native, romaji = excluded.romaji, english = excluded.english").unwrap();
+
+                let anime_result = stmt.execute(&[
+                    &new_anime.anime_id,
+                    &new_anime.description,
+                    &new_anime.cover_s3,
+                    &new_anime.cover_anilist,
+                    &new_anime.average,
+                    &new_anime.native,
+                    &new_anime.romaji,
+                    &new_anime.english,
+                ]);
 
                 match anime_result {
                     Ok(_) => {
@@ -234,7 +280,7 @@ pub fn update_entries(id: i32) {
                 let start = construct_date(entry.started_at);
                 let end = construct_date(entry.completed_at);
 
-                let new_list = models::List {
+                let new_list = models::ListItem {
                     user_id: id,
                     anime_id: entry.media.id,
                     user_title: entry.media.title.user_preferred,
@@ -243,12 +289,16 @@ pub fn update_entries(id: i32) {
                     score: entry.score_raw,
                 };
 
-                let list_result = diesel::insert_into(lists::table)
-                    .values(&new_list)
-                    .on_conflict((lists::anime_id, lists::user_id))
-                    .do_update()
-                    .set(&new_list)
-                    .execute(&connection);
+                let stmt = connection.prepare_cached("INSERT INTO lists (user_id, anime_id, user_title, start_day, end_day, score) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id, anime_id) DO UPDATE SET user_title = excluded.user_title, start_day = excluded.start_day, end_day = excluded.end_day, score = excluded.score").unwrap();
+
+                let list_result = stmt.execute(&[
+                    &new_list.user_id,
+                    &new_list.anime_id,
+                    &new_list.user_title,
+                    &new_list.start_day,
+                    &new_list.end_day,
+                    &new_list.score,
+                ]);
 
                 if list_result.is_err() {
                     error!(

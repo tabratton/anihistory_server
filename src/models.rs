@@ -7,12 +7,10 @@
  */
 
 use chrono::NaiveDate;
-use schema::anime;
-use schema::lists;
-use schema::users;
+use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Queryable, Insertable, AsChangeset, Serialize, Deserialize)]
-#[table_name = "users"]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+//#[table_name = "users"]
 pub struct User {
     pub user_id: i32,
     pub name: String,
@@ -20,8 +18,8 @@ pub struct User {
     pub avatar_anilist: String,
 }
 
-#[derive(Debug, Clone, Queryable, Insertable, AsChangeset)]
-#[table_name = "anime"]
+#[derive(Debug, Clone)]
+//#[table_name = "anime"]
 pub struct Anime {
     pub anime_id: i32,
     pub description: String,
@@ -33,15 +31,23 @@ pub struct Anime {
     pub english: Option<String>,
 }
 
-#[derive(Debug, Clone, Queryable, Insertable, AsChangeset)]
-#[table_name = "lists"]
-pub struct List {
+#[derive(Debug, Clone)]
+//#[table_name = "lists"]
+pub struct ListItem {
     pub user_id: i32,
     pub anime_id: i32,
     pub user_title: Option<String>,
     pub start_day: Option<NaiveDate>,
     pub end_day: Option<NaiveDate>,
     pub score: Option<i16>,
+}
+
+#[derive(Debug, Clone)]
+//#[table_name = "lists"]
+pub struct ListItemMap {
+    pub user: User,
+    pub anime: Anime,
+    pub list_item: ListItem,
 }
 
 #[derive(Serialize, Deserialize)]
