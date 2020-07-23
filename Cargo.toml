@@ -12,7 +12,7 @@ fern = "0.6.0"
 reqwest = { version = "0.10.1", features = ["blocking", "json"] }
 rocket = "0.4.2"
 rocket_contrib = { version="0.4.2", default-features=false, features=["postgres_pool", "json", "serve"] }
-rusoto_core = "0.42.0"
+rusoto_core = "0.45.0"
 rusoto_s3 = "0.42.0"
 rusoto_signature = "0.43.0"
 serde_derive = "1.0.98"
